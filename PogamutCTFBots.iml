@@ -12,6 +12,9 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="library" name="Maven: cz.cuni.amis.pogamut.ut2004:ut2004-team-comm:3.7.0" level="project" />
+    <orderEntry type="library" name="Maven: org.apache.mina:mina-core:2.0.4" level="project" />
+    <orderEntry type="library" name="Maven: org.slf4j:slf4j-api:1.6.1" level="project" />
     <orderEntry type="library" name="Maven: cz.cuni.amis.pogamut:pogamut-ut2004:3.7.0" level="project" />
     <orderEntry type="library" name="Maven: org.apache.ant:ant-trax:1.8.0" level="project" />
     <orderEntry type="library" name="Maven: net.sourceforge.saxon:saxon:9.1.0.8" level="project" />

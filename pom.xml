@@ -7,7 +7,13 @@
 		<artifactId>pogamut-ut2004-bot-pom</artifactId>
 		<version>3.7.0</version>
 	</parent>
-
+	<dependencies>
+		<dependency>
+			<groupId>cz.cuni.amis.pogamut.ut2004</groupId>
+			<artifactId>ut2004-team-comm</artifactId>
+			<version>3.7.0</version>
+		</dependency>
+	</dependencies>
 	<groupId>cz.zcu.fav.kiv.dobripet</groupId>
 	<artifactId>pogamut-ctf-bots</artifactId>
 	<version>1.0-SNAPSHOT</version>

@@ -1,60 +1,22 @@
 package cz.zcu.fav.kiv.dobripet;
 
 import cz.cuni.amis.pogamut.ut2004.bot.params.UT2004BotParameters;
-import cz.cuni.amis.pogamut.ut2004.communication.messages.gbcommands.Initialize;
 
 /**
- * Custom parameters for CTF bots that sets TEAM / SKIN /SKILL LEVEL
+ * Adding skill param to UT2004BotParameters
  * 
- * @author Jimmy
+ * @author dobripet
  */
 public class CTFBotParams extends UT2004BotParameters {
+	// default skill level
+	private int skill = 4;
 
-	/**
-	 * This will represent bot skin to be used during initialization, i.e., {@link Initialize#setSkin(String)}.
-	 */
-	private String botSkin;
-	
-	/**
-	 * This will represent bot skill level that is to be used during initialization, i.e., {@link Initialize#setDesiredSkill(Integer)}.
-	 * <p><p>
-	 * Notice that by setting some default values, you may provide "defaults" for your custom params.
-	 */
-	private int skillLevel = 4;
-
-	/**
-	 * This returns the skin of the bot to be used.
-	 * @return
-	 */
-	public String getBotSkin() {
-		return botSkin;
+	public int getSkill() {
+		return skill;
 	}
 
-	/**
-	 * Sets the skin to be used for the bot.
-	 * @param botSkin
-	 * @return
-	 */
-	public CTFBotParams setBotSkin(String botSkin) {
-		this.botSkin = botSkin;
-		return this;
-	}
-
-	/**
-	 * This returns the desired skill level of the bot to be used.
-	 * @return
-	 */
-	public int getSkillLevel() {
-		return skillLevel;
-	}
-
-	/**
-	 * Sets desired skill level of the bot. 
-	 * @param skillLevel
-	 * @return
-	 */
-	public CTFBotParams setSkillLevel(int skillLevel) {
-		this.skillLevel = skillLevel;
+	public CTFBotParams setSkill(int skill) {
+		this.skill= skill;
 		return this;
 	}
 	
