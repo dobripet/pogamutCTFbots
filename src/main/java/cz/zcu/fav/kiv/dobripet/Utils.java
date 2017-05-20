@@ -60,7 +60,6 @@ public class Utils {
         if(distance != 0){
             return distance;
         }
-        System.out.println("zerooo");
         return 1d;
     }
 }

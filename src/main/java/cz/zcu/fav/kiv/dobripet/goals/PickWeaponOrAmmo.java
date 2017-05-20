@@ -1,11 +1,9 @@
 package cz.zcu.fav.kiv.dobripet.goals;
 
-import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
-import cz.cuni.amis.pogamut.ut2004.agent.module.sensomotoric.UT2004Weaponry;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.ItemType;
-import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.Item;
 import cz.zcu.fav.kiv.dobripet.CTFBot;
+import cz.zcu.fav.kiv.dobripet.Priority;
 import cz.zcu.fav.kiv.dobripet.Role;
 import cz.zcu.fav.kiv.dobripet.Utils;
 
@@ -20,14 +18,9 @@ public class PickWeaponOrAmmo extends Goal {
     private Item item;
     private List<Item> itemsToPickUp;
 
-    private List<ItemType> itemsTypesToPickUp;
-    //priority
-    private final double PRIORITY = 15;
-    //maximal priority
-    private final double MAX_PRIORITY = 50;
     //maximal acceptable distance to return priority >= PRIORITY
-    private final double DEFENDER_MAX_DISTANCE_TO_PRIORITY = 5000;
-    private final double ATTACKER_MAX_DISTANCE_TO_PRIORITY = 10000;
+    private final double DEFENDER_MAX_DISTANCE_TO_PRIORITY = 3000;
+    private final double ATTACKER_MAX_DISTANCE_TO_PRIORITY = 6000;
 
     public PickWeaponOrAmmo(CTFBot bot) {
         super(bot);
@@ -36,7 +29,7 @@ public class PickWeaponOrAmmo extends Goal {
 
     @Override
     public void perform() {
-        bot.getBot().getBotName().setInfo("PICK " + item.getType().getName());
+        bot.getBot().getBotName().setInfo("PICK WEAPON" + item.getType().getName());
         bot.pickItem(item);
     }
 
@@ -46,7 +39,6 @@ public class PickWeaponOrAmmo extends Goal {
         item = null;
 
         Set<Item> items = bot.getTaboo().filter(itemsToPickUp);
-        System.out.println(items.size() + " " + itemsToPickUp.size());
         for (Item i : items) {
             ItemType weaponType;
             ItemType ammoType;
@@ -68,7 +60,7 @@ public class PickWeaponOrAmmo extends Goal {
             }
             //get distance
             if(i.getNavPoint() == null){
-                bot.getLog().severe("ITEM NAV POInT IS NULL " +i);
+                bot.getLog().severe("ITEM NAV POINT IS NULL " +i);
                 continue;
             }
             double distance = bot.getAStar().getDistance(bot.getInfo().getNearestNavPoint(), i.getNavPoint());
@@ -76,9 +68,8 @@ public class PickWeaponOrAmmo extends Goal {
             //attacker has bigger distance
             double d = bot.getRole() == Role.ATTACKER ? ATTACKER_MAX_DISTANCE_TO_PRIORITY : DEFENDER_MAX_DISTANCE_TO_PRIORITY;
             //constant dependable on amount of ammo formula (d - (cur/max)*d)*PRIORITY
-            c += (d - (((double) bot.getWeaponry().getAmmo(ammoType)) / bot.getWeaponry().getMaxAmmo(ammoType)) * d) * PRIORITY;
+            c += (d - (((double) bot.getWeaponry().getAmmo(ammoType)) / bot.getWeaponry().getMaxAmmo(ammoType)) * d) * Priority.WEAPON_AMMO_PRIORITY;
             //with low ammo bigger distance have bigger score, with almost full ammo score is low
-            //System.out.println("dist " + distance + " c " +c);
             double priority = c / Utils.nonZeroDistance(distance);
             if (maxPriority < priority) {
                 maxPriority = priority;
@@ -95,21 +86,12 @@ public class PickWeaponOrAmmo extends Goal {
             bot.getLog().fine("NO ITEM TO PICK");
         }
         // hard limit
-        if (maxPriority > MAX_PRIORITY) {
-            return MAX_PRIORITY*(2/bot.getWeaponry().getLoadedWeapons().size());
+        if (maxPriority > Priority.WEAPON_AMMO_MAX_PRIORITY) {
+            return Priority.WEAPON_AMMO_MAX_PRIORITY*(2/bot.getWeaponry().getLoadedWeapons().size());
         }
         return maxPriority*(2/bot.getWeaponry().getLoadedWeapons().size());
     }
 
-    @Override
-    public boolean hasFailed() {
-        return false;
-    }
-
-    @Override
-    public boolean hasFinished() {
-        return false;
-    }
 
     @Override
     public void abandon() {
@@ -130,11 +112,4 @@ public class PickWeaponOrAmmo extends Goal {
         this.itemsToPickUp = itemsToPickUp;
     }
 
-    public List<ItemType> getItemsTypesToPickUp() {
-        return itemsTypesToPickUp;
-    }
-
-    public void setItemsTypesToPickUp(List<ItemType> itemsTypesToPickUp) {
-        this.itemsTypesToPickUp = itemsTypesToPickUp;
-    }
 }

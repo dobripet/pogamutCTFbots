@@ -4,18 +4,20 @@ import java.util.Collections;
 import java.util.LinkedList;
 
 import cz.cuni.amis.pogamut.ut2004.bot.impl.UT2004Bot;
+import cz.zcu.fav.kiv.dobripet.CTFBot;
 
 public class GoalManager {
 	protected final LinkedList<IGoal> goals = new LinkedList<IGoal>();
 	protected IGoal currentGoal = null;
-	protected UT2004Bot bot;
+	protected CTFBot bot;
 
-	public GoalManager(UT2004Bot bot) {
+	public GoalManager(CTFBot bot) {
 		this.bot = bot;
 	}
 
 	public boolean addGoal(IGoal goal) {
 		if (!goals.contains(goal)) {
+		    goal.setId(goals.size());
 			goals.add(goal);
 			return true;
 		} else {
@@ -38,7 +40,7 @@ public class GoalManager {
 			currentGoal.abandon();
 		}
 		currentGoal = next_goal;
-
+        bot.setLastGoal(currentGoal.getId());
 		bot.getLog().fine(
 				String.format(
 						"CHOSEN GOAL %.2f: %s",

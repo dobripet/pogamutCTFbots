@@ -33,4 +33,12 @@ public class TCUpdateFlagLocation extends TCMessageData {
     public void setOurFlagLocation(Location ourFlagLocation) {
         this.ourFlagLocation = ourFlagLocation;
     }
+
+    @Override
+    public String toString() {
+        return "TCUpdateFlagLocation{" +
+                "enemyFlagLocation=" + enemyFlagLocation +
+                ", ourFlagLocation=" + ourFlagLocation +
+                '}';
+    }
 }

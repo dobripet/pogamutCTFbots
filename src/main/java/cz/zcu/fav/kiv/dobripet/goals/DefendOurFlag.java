@@ -1,15 +1,11 @@
 package cz.zcu.fav.kiv.dobripet.goals;
 
 import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
-import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
-import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.Player;
 import cz.zcu.fav.kiv.dobripet.CTFBot;
+import cz.zcu.fav.kiv.dobripet.Priority;
 import cz.zcu.fav.kiv.dobripet.Role;
 
-import java.sql.Timestamp;
-import java.util.Date;
 import java.util.List;
-import java.util.Random;
 
 /**
  * Created by Petr on 5/8/2017.
@@ -78,39 +74,29 @@ public class DefendOurFlag extends Goal {
         if(bot.getRole() == Role.DEFENDER){
             if(!bot.getCTF().isOurFlagHome()){
                 if(bot.getCTF().getOurFlag().isVisible()){
-                    return 80d;
+                    return Priority.DEFEND_FLAG_PRIORITY;
                 }else{
-                    return 55d;
+                    return Priority.DEFEND_HUNT_DEFENDER_PRIORITY;
                 }
             } else {
                 defendSpot = defendSpots.get(roundIndex % defendSpots.size());
                 if(bot.isAnybodyCamper()){
-                    return 15d;
+                    return 0d;
                 }
-                return 45d;
+                return Priority.DEFEND_CAMP_PRIORITY;
             }
         } else{
             //attacker
             if(!bot.getCTF().isOurFlagHome()){
                 if(bot.getCTF().getOurFlag().isVisible()){
-                    return 80d;
+                    return Priority.DEFEND_FLAG_PRIORITY;
                 }else{
-                    return 35d;
+                    return Priority.DEFEND_HUNT_ATTACKER_PRIORITY;
                 }
             } else {
                 return 0d;
             }
         }
-    }
-
-    @Override
-    public boolean hasFailed() {
-        return false;
-    }
-
-    @Override
-    public boolean hasFinished() {
-        return false;
     }
 
     @Override

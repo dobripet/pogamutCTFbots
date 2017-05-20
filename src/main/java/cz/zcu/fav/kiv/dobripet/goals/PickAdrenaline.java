@@ -1,8 +1,8 @@
 package cz.zcu.fav.kiv.dobripet.goals;
 
-import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.Item;
 import cz.zcu.fav.kiv.dobripet.CTFBot;
+import cz.zcu.fav.kiv.dobripet.Priority;
 import cz.zcu.fav.kiv.dobripet.Role;
 import cz.zcu.fav.kiv.dobripet.Utils;
 
@@ -16,13 +16,9 @@ public class PickAdrenaline extends Goal {
 
     private Item item;
     private List<Item> itemsToPickUp;
-    //priority
-    private final double PRIORITY = 10;
-    //maximal priority
-    private final double MAX_PRIORITY = 40;
     //maximal acceptable distance to return priority >= PRIORITY
-    private final double DEFENDER_MAX_DISTANCE_TO_PRIORITY = 5000 * PRIORITY;
-    private final double ATTACKER_MAX_DISTANCE_TO_PRIORITY = 10000 * PRIORITY;
+    private final double DEFENDER_MAX_DISTANCE_TO_PRIORITY = 2000 * Priority.ADRENALINE_PRIORITY;
+    private final double ATTACKER_MAX_DISTANCE_TO_PRIORITY = 4000 * Priority.ADRENALINE_PRIORITY;
 
     public PickAdrenaline(CTFBot bot) {
         super(bot);
@@ -71,20 +67,10 @@ public class PickAdrenaline extends Goal {
             bot.getLog().fine("NO ITEM TO PICK");
         }
         // hard limit
-        if (maxPriority > MAX_PRIORITY) {
-            return MAX_PRIORITY;
+        if (maxPriority > Priority.ADRENALINE_MAX_PRIORITY) {
+            return Priority.ADRENALINE_MAX_PRIORITY;
         }
         return maxPriority;
-    }
-
-    @Override
-    public boolean hasFailed() {
-        return false;
-    }
-
-    @Override
-    public boolean hasFinished() {
-        return false;
     }
 
     @Override

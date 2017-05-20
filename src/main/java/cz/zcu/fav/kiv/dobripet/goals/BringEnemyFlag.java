@@ -1,19 +1,17 @@
 package cz.zcu.fav.kiv.dobripet.goals;
 
+import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
 import cz.zcu.fav.kiv.dobripet.CTFBot;
+import cz.zcu.fav.kiv.dobripet.Priority;
 import cz.zcu.fav.kiv.dobripet.Role;
 import cz.zcu.fav.kiv.dobripet.SupportType;
 import cz.zcu.fav.kiv.dobripet.communication.TCSupportUpdate;
 
 public class BringEnemyFlag extends Goal {
 
-
-	private final double HOLDING_FLAG_PRIORITY = 70;
-	private final double ATTACKER_PRIORITY = 45;
-	private final double DEFENDER_PRIORITY = 10;
-
 	private boolean askedForSupport = false;
 	private boolean isAtOurBase = false;
+	private Location lastTarget;
 
 	public BringEnemyFlag(CTFBot bot) {
 		super(bot);
@@ -21,12 +19,13 @@ public class BringEnemyFlag extends Goal {
 
 	@Override
 	public void perform() {
+	    Location target = null;
 		if (bot.getCTF().isBotCarryingEnemyFlag()) {
-			bot.goTo(bot.getCTF().getOurBase());
+		    target = bot.getCTF().getOurBase().getLocation();
 			bot.getBot().getBotName().setInfo("CARRY ENEMY FLAG");
-			bot.getLog().info("goTo ourFlagBase");
-			//already at our base but flag is not home, change type
-			if(bot.getInfo().isAtLocation(bot.getCTF().getOurBase(), 500) && !bot.getCTF().isOurFlagHome()) {
+			bot.getLog().info("GO TO OUR BASE");
+			//already at our base but flag is not home, change type, try survive
+			if(bot.getInfo().isAtLocation(bot.getCTF().getOurBase(), 1000) && !bot.getCTF().isOurFlagHome()) {
 				if (!isAtOurBase) {
 					bot.getTCClient().sendToTeamOthers( new TCSupportUpdate(bot.getInfo().getId(), SupportType.GET_OUR_FLAG, false));
 					bot.getLog().fine("SENDING SUPPORT UPDATE: GET_OUR_FLAG");
@@ -43,37 +42,38 @@ public class BringEnemyFlag extends Goal {
 				askedForSupport = true;
 			}
 		}else{
-			bot.goTo(bot.getEnemyFlagLocation());
+		    target = bot.getEnemyFlagLocation();
 			bot.getBot().getBotName().setInfo("GOING FOR ENEMY FLAG");
-			bot.getLog().info("goTo pick up enemy flag");
+			bot.getLog().info("GO TO PICK ENEMY FLAG");
 		}
+        bot.goToCover(target);
+        bot.getLog().fine("GO COVER PATH");
+        //something bad happened, navigate standard
+        /*if(!bot.isCoverPathNavigating()) {
+            bot.goTo(target);
+            bot.getLog().info("COVER CHANGED TO STANDARD NAVIGATION");
+        }*/
+        lastTarget = target;
 	}
 
 	@Override
 	public double getPriority() {
 		if (bot.getCTF().isBotCarryingEnemyFlag()) {
-			return HOLDING_FLAG_PRIORITY;
-		} else if (bot.getRole() == Role.ATTACKER && !bot.getCTF().isOurTeamCarryingEnemyFlag()){
-			return ATTACKER_PRIORITY;
+			return Priority.BRING_CARRY_PRIORITY;
+		} else if(bot.getCTF().isOurTeamCarryingEnemyFlag()){
+		    return 0d;
+        } else if (bot.getRole() == Role.ATTACKER){
+			return  Priority.BRING_ATTACKER_PRIORITY;
 		} else{
-			return DEFENDER_PRIORITY;
+			return  Priority.BRING_DEFENDER_PRIORITY;
 		}
-	}
-
-	@Override
-	public boolean hasFailed() {
-		return false;
-	}
-
-	@Override
-	public boolean hasFinished() {
-		return false;
 	}
 
 	@Override
 	public void abandon() {
 		askedForSupport = false;
 		isAtOurBase = false;
+		lastTarget = null;
 		bot.getLog().info("abandoning bringEnemyFlag");
 	}
 }

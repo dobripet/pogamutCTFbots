@@ -6,10 +6,9 @@ public interface IGoal{
 
 	double getPriority();
 
-	boolean hasFailed();
-
-	boolean hasFinished();
-
 	void abandon();
-	
+
+	int getId();
+
+	void setId(int id);
 }

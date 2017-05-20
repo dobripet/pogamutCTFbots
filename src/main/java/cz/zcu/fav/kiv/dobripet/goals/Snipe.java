@@ -2,6 +2,7 @@ package cz.zcu.fav.kiv.dobripet.goals;
 
 import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
 import cz.zcu.fav.kiv.dobripet.CTFBot;
+import cz.zcu.fav.kiv.dobripet.Priority;
 import cz.zcu.fav.kiv.dobripet.Role;
 
 import java.util.List;
@@ -50,27 +51,18 @@ public class Snipe extends Goal {
 
     @Override
     public double getPriority() {
-        if(bot.getCTF().isOurFlagHome()){
+        /*if(bot.getCTF().isOurFlagHome()){
             if(!bot.isAnybodySniper() && bot.hasSniperGun()){
                 //rnd sniping spot
                 snipingSpot = snipingSpots.get(roundIndex % snipingSpots.size());
                 if(bot.getRole() == Role.ATTACKER){
-                    return 40d;
+                    return Priority.SNIPE_ATTACKER_PRIORITY;
                 }
-                return 44d;
+                return Priority.SNIPE_DEFENDER_PRIORITY;
             }
-        }
-        return 0d;
-    }
-
-    @Override
-    public boolean hasFailed() {
-        return false;
-    }
-
-    @Override
-    public boolean hasFinished() {
-        return false;
+        }*/
+        snipingSpot = snipingSpots.get(roundIndex % snipingSpots.size());
+        return 1000d;
     }
 
     @Override
