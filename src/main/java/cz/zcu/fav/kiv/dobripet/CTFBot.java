@@ -19,7 +19,6 @@ import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.NavigationGraphBuilder;
 import cz.cuni.amis.pogamut.ut2004.agent.module.utils.TabooSet;
 import cz.cuni.amis.pogamut.ut2004.agent.navigation.UT2004MapTweaks;
 import cz.cuni.amis.pogamut.ut2004.agent.navigation.UT2004PathAutoFixer;
-import cz.cuni.amis.pogamut.ut2004.agent.navigation.navmesh.pathfollowing.NavMeshNavigation;
 import cz.cuni.amis.pogamut.ut2004.agent.navigation.navmesh.pathfollowing.UT2004AcceleratedPathExecutor;
 import cz.cuni.amis.pogamut.ut2004.agent.navigation.stuckdetector.AccUT2004DistanceStuckDetector;
 import cz.cuni.amis.pogamut.ut2004.agent.navigation.stuckdetector.AccUT2004PositionStuckDetector;
@@ -32,6 +31,7 @@ import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbcommands.Initialize;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.*;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.bot.UT2004BotTCController;
+import cz.cuni.amis.pogamut.ut2004.teamcomm.server.UT2004TCServer;
 import cz.cuni.amis.pogamut.ut2004.utils.UT2004BotRunner;
 import cz.cuni.amis.utils.Cooldown;
 import cz.cuni.amis.utils.Heatup;
@@ -41,8 +41,10 @@ import cz.cuni.amis.utils.flag.FlagListener;
 import cz.zcu.fav.kiv.dobripet.communication.*;
 import cz.zcu.fav.kiv.dobripet.goals.*;
 
+import java.awt.*;
 import java.io.File;
 import java.util.*;
+import java.util.List;
 import java.util.logging.Level;
 
 /**
@@ -50,7 +52,8 @@ import java.util.logging.Level;
  * for preys shooting at everything that is in its way.
  * 
  * @author Rudolf Kadlec aka ik
- * @author Jimmy, dobripet
+ * @author Jimmy
+ * @author dobripet
  */
 @AgentScoped
 public class CTFBot extends UT2004BotTCController<UT2004Bot> {
@@ -66,8 +69,6 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
     private static int team;
     // status info cooldown
 	private final Cooldown statusCD = new Cooldown(1500);
-	// target heatup
-	private final Heatup targetHU = new Heatup(5000);
     // combat heatup
     private final Heatup combatHU = new Heatup(1000);
 	// goal manager
@@ -78,14 +79,6 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
     private static int botsInitialized = 0;
     // bot role
 	private Role role;
-	// pick weapon or ammo goal
-	private PickWeaponOrAmmo pickWeaponOrAmmoGoal;
-	// pick shield
-	private PickShield pickShieldGoal;
-	// pick health
-	private PickHealth pickHealthGoal;
-	// pick adrenaline
-	private PickAdrenaline pickAdrenalineGoal;
     // bring enemy flag
     private DefendOurFlag defendOurFlagGoal;
     private Snipe snipeGoal;
@@ -95,21 +88,25 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
 	private Item targetItem;
     // currently hunted player
     private Player enemy;
-    // currentl enemy carry
+    // current enemy carry
     private Player enemyCarry;
     //where is player going
     private Location navigationTarget;
 
+
+    private Location hideCarryLocation;
+    private Location rendezvousLocation;
+
 	private Map<UnrealId, SupportType> supportRequests;
     private Map<UnrealId, TCTeammateInfo> teammates;
-    private Map<UnrealId, TCEnemyInfo> enemies;
+    private Map<UnrealId, Tuple2<TCEnemyInfo, Cooldown>> enemies;
 
 	// last known enemy flag location
 	private Location enemyFlagLocation;
 	// last known our flag location
 	private Location ourFlagLocation;
 	// if flag was not at last known position
-    private boolean flagUnknown = false;
+    private boolean flagUnknown = true;
 
 	//helper to determine if bot holded flag last logic
 	private boolean isCarry;
@@ -133,17 +130,11 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
 
     @Override
     public void prepareBot(UT2004Bot bot) {
-        bot.getLogger().setLevel(Level.FINE);
+        bot.getLogger().setLevel(Level.WARNING);
         bot.getLogger().addDefaultFileHandler(new File("CTFBot"+botsInitialized+"-"+team+".txt"));
         //set base name
         botName = bot.getName();
         tabooItems = new TabooSet<Item>(bot);
-        // use navmesh
-        if (navMeshModule.isInitialized()) {
-            navigation = new NavMeshNavigation(bot, info, move, navMeshModule);
-            //drawmesh
-            //navMeshModule.getNavMeshDraw().draw(true, true);
-        }
 
         pathExecutor = ((UT2004AcceleratedPathExecutor) navigation.getPathExecutor());
         pathExecutor.removeAllStuckDetectors();
@@ -161,7 +152,7 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
             }
         });
         // setup smart shooting
-        // general preferences, probably unused cuz of range prefs
+        // general preferences, best for long range
         weaponPrefs.addGeneralPref(UT2004ItemType.LIGHTNING_GUN, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.SHOCK_RIFLE, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.MINIGUN, false);
@@ -179,57 +170,37 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
                 .add(UT2004ItemType.FLAK_CANNON, true)
                 .add(UT2004ItemType.LINK_GUN, false)
                 .add(UT2004ItemType.MINIGUN, true)
-                .add(UT2004ItemType.BIO_RIFLE, true)
-                .add(UT2004ItemType.SHIELD_GUN, false);
-        // < 1.5m
-        getWeaponPrefs().newPrefsRange(150)
+                .add(UT2004ItemType.BIO_RIFLE, true);
+        // < 2.5m
+        getWeaponPrefs().newPrefsRange(250)
                 .add(UT2004ItemType.FLAK_CANNON, true)
                 .add(UT2004ItemType.LINK_GUN, false)
                 .add(UT2004ItemType.MINIGUN, true)
-                .add(UT2004ItemType.BIO_RIFLE, true)
-                .add(UT2004ItemType.SHIELD_GUN, false);
+                .add(UT2004ItemType.BIO_RIFLE, true);
 
         // < 5m
         getWeaponPrefs().newPrefsRange(500)
+                .add(UT2004ItemType.MINIGUN, true)
                 .add(UT2004ItemType.FLAK_CANNON, true)
                 .add(UT2004ItemType.LINK_GUN, false)
-                .add(UT2004ItemType.MINIGUN, true)
-                .add(UT2004ItemType.ROCKET_LAUNCHER, true)
-                .add(UT2004ItemType.LIGHTNING_GUN, true)
-                .add(UT2004ItemType.BIO_RIFLE, true)
-                .add(UT2004ItemType.SHIELD_GUN, false);
+                .add(UT2004ItemType.BIO_RIFLE, true);
 
         // < 10m
         getWeaponPrefs().newPrefsRange(1000)
                 .add(UT2004ItemType.MINIGUN, true)
                 .add(UT2004ItemType.LINK_GUN, true)
-                .add(UT2004ItemType.FLAK_CANNON, true)
                 .add(UT2004ItemType.SHOCK_RIFLE, true)
-                .add(UT2004ItemType.ROCKET_LAUNCHER, true)
-                .add(UT2004ItemType.LIGHTNING_GUN, true)
-                .add(UT2004ItemType.SHIELD_GUN, false);
+                .add(UT2004ItemType.ROCKET_LAUNCHER, true);
 
         // < 25m
         getWeaponPrefs().newPrefsRange(2500)
                 .add(UT2004ItemType.SHOCK_RIFLE, true)
-                .add(UT2004ItemType.LIGHTNING_GUN, true)
-                .add(UT2004ItemType.MINIGUN, false)
-                .add(UT2004ItemType.LINK_GUN, true)
-                .add(UT2004ItemType.ROCKET_LAUNCHER, true)
-                .add(UT2004ItemType.SHIELD_GUN, false);
-
-        // rest
-        getWeaponPrefs().newPrefsRange(100000)
-                .add(UT2004ItemType.LIGHTNING_GUN, true)
-                .add(UT2004ItemType.SHOCK_RIFLE, true)
-                .add(UT2004ItemType.MINIGUN, false)
-                .add(UT2004ItemType.ROCKET_LAUNCHER, true)
-                .add(UT2004ItemType.SHIELD_GUN, false);
+                .add(UT2004ItemType.MINIGUN, false);
 
         //init sets
         supportRequests = new HashMap<UnrealId, SupportType>();
         teammates = new HashMap<UnrealId, TCTeammateInfo>();
-        enemies = new HashMap<UnrealId, TCEnemyInfo>();
+        enemies = new HashMap<UnrealId, Tuple2<TCEnemyInfo, Cooldown>>();
     }
 
    @Override
@@ -248,30 +219,76 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
         mapTweaks.register("CTF-BP2-Concentrate", new UT2004MapTweaks.IMapTweak() {
             @Override
             public void tweak(NavigationGraphBuilder navigationGraphBuilder) {
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode0", "CTF-BP2-Concentrate.xBlueFlagBase0");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode0", "CTF-BP2-Concentrate.JumpSpot0");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode0", "CTF-BP2-Concentrate.PathNode39");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode44", "CTF-BP2-Concentrate.xBlueFlagBase0");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode44", "CTF-BP2-Concentrate.JumpSpot0");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode44", "CTF-BP2-Concentrate.PathNode39");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode9", "CTF-BP2-Concentrate.PathNode39");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode0", "CTF-BP2-Concentrate.JumpSpot3");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode44", "CTF-BP2-Concentrate.JumpSpot3");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode35", "CTF-BP2-Concentrate.JumpSpot6");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode23", "CTF-BP2-Concentrate.JumpSpot5");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode39", "CTF-BP2-Concentrate.JumpSpot3");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode81", "CTF-BP2-Concentrate.xRedFlagBase1");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode81", "CTF-BP2-Concentrate.JumpSpot1");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode81", "CTF-BP2-Concentrate.PathNode75");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode74", "CTF-BP2-Concentrate.xRedFlagBase1");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode74", "CTF-BP2-Concentrate.JumpSpot1");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode74", "CTF-BP2-Concentrate.PathNode75");
-                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode67", "CTF-BP2-Concentrate.PathNode64");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.InventorySpot59", "CTF-BP2-Concentrate.PathNode81");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.xRedFlagBase1", "CTF-BP2-Concentrate.PathNode81");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.xRedFlagBase1", "CTF-BP2-Concentrate.PathNode74");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.AssaultPath12", "CTF-BP2-Concentrate.PathNode81");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.AssaultPath12", "CTF-BP2-Concentrate.PathNode74");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.JumpSpot2", "CTF-BP2-Concentrate.PathNode74");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.JumpSpot2", "CTF-BP2-Concentrate.PathNode81");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.JumpSpot11", "CTF-BP2-Concentrate.JumpSpot13");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.JumpSpot11", "CTF-BP2-Concentrate.PathNode40");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.JumpSpot11", "CTF-BP2-Concentrate.JumpSpot14");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.JumpSpot11", "CTF-BP2-Concentrate.PathNode31");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.JumpSpot14", "CTF-BP2-Concentrate.PathNode75");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.JumpSpot13", "CTF-BP2-Concentrate.PathNode75");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.InventorySpot55", "CTF-BP2-Concentrate.PathNode44");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.xBlueFlagBase0", "CTF-BP2-Concentrate.PathNode44");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.xBlueFlagBase0", "CTF-BP2-Concentrate.PathNode0");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.JumpSpot3", "CTF-BP2-Concentrate.PathNode0");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.JumpSpot3", "CTF-BP2-Concentrate.PathNode44");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.JumpSpot4", "CTF-BP2-Concentrate.JumpSpot6");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.JumpSpot4", "CTF-BP2-Concentrate.JumpSpot5");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.JumpSpot4", "CTF-BP2-Concentrate.PathNode18");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.JumpSpot4", "CTF-BP2-Concentrate.PathNode30");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode39", "CTF-BP2-Concentrate.JumpSpot6");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.PathNode39", "CTF-BP2-Concentrate.JumpSpot5");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.AssaultPath5", "CTF-BP2-Concentrate.PathNode44");
+                navBuilder.removeEdgesBetween("CTF-BP2-Concentrate.AssaultPath5", "CTF-BP2-Concentrate.PathNode0");
             }
         });
+       mapTweaks.register("CTF-Maul", new UT2004MapTweaks.IMapTweak() {
+           @Override
+           public void tweak(NavigationGraphBuilder navigationGraphBuilder) {
+               //blue
+               navBuilder.removeEdge("CTF-Maul.PathNode10", "CTF-Maul.JumpSpot6");
+               navBuilder.removeEdge("CTF-Maul.PathNode12", "CTF-Maul.JumpSpot6");
+               navBuilder.removeEdge("CTF-Maul.PathNode143", "CTF-Maul.JumpSpot6");
+               navBuilder.removeEdge("CTF-Maul.PathNode63", "CTF-Maul.JumpSpot6");
+               navBuilder.removeEdge("CTF-Maul.PathNode142", "CTF-Maul.JumpSpot6");
+               navBuilder.removeEdge("CTF-Maul.PathNode10", "CTF-Maul.JumpSpot20");
+               navBuilder.removeEdge("CTF-Maul.PathNode63", "CTF-Maul.JumpSpot20");
+               navBuilder.removeEdge("CTF-Maul.PathNode6", "CTF-Maul.JumpSpot20");
+               navBuilder.removeEdge("CTF-Maul.PathNode64", "CTF-Maul.JumpSpot20");
+               navBuilder.removeEdge("CTF-Maul.InventorySpot801", "CTF-Maul.JumpSpot20");
+               navBuilder.removeEdge("CTF-Maul.PlayerStart1", "CTF-Maul.JumpSpot7");
+               navBuilder.removeEdge("CTF-Maul.InventorySpot801", "CTF-Maul.JumpSpot7");
+               navBuilder.removeEdge("CTF-Maul.PathNode48", "CTF-Maul.JumpSpot7");
+               navBuilder.removeEdge("CTF-Maul.PathNode64", "CTF-Maul.JumpSpot7");
+
+               //red
+               navBuilder.removeEdge("CTF-Maul.PlayerStart8", "CTF-Maul.JumpSpot2");
+               navBuilder.removeEdge("CTF-Maul.InventorySpot807", "CTF-Maul.JumpSpot2");
+               navBuilder.removeEdge("CTF-Maul.PathNode92", "CTF-Maul.JumpSpot2");
+               navBuilder.removeEdge("CTF-Maul.PathNode66", "CTF-Maul.JumpSpot2");
+               navBuilder.removeEdge("CTF-Maul.PathNode67", "CTF-Maul.JumpSpot2");
+               navBuilder.removeEdge("CTF-Maul.PathNode66", "CTF-Maul.JumpSpot18");
+               navBuilder.removeEdge("CTF-Maul.PathNode93", "CTF-Maul.JumpSpot18");
+               navBuilder.removeEdge("CTF-Maul.PathNode67", "CTF-Maul.JumpSpot18");
+               navBuilder.removeEdge("CTF-Maul.PathNode76", "CTF-Maul.JumpSpot18");
+               navBuilder.removeEdge("CTF-Maul.PathNode95", "CTF-Maul.JumpSpot18");
+               navBuilder.removeEdge("CTF-Maul.PathNode67", "CTF-Maul.JumpSpot3");
+               navBuilder.removeEdge("CTF-Maul.PathNode77", "CTF-Maul.JumpSpot3");
+               navBuilder.removeEdge("CTF-Maul.PathNode95", "CTF-Maul.JumpSpot3");
+               navBuilder.removeEdge("CTF-Maul.PathNode78", "CTF-Maul.JumpSpot3");
+               navBuilder.removeEdge("CTF-Maul.PathNode96", "CTF-Maul.JumpSpot3");
+           }
+       });
 
     }
-                @Override
+
+
+    @Override
 	public void botInitialized(GameInfo gameInfo, ConfigChange currentConfig, InitedMessage init) {
 		//select starting role
 		if(botsInitialized % 2 == 0){
@@ -282,41 +299,26 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
         botsInitialized++;
         // create goal manager
         goalManager = new GoalManager(this);
-        // add common goals
-		goalManager.addGoal(pickWeaponOrAmmoGoal = new PickWeaponOrAmmo(this));
-		goalManager.addGoal(pickShieldGoal = new PickShield(this));
-		goalManager.addGoal(pickHealthGoal = new PickHealth(this));
-        goalManager.addGoal(pickAdrenalineGoal = new PickAdrenaline(this));
+        // add common goal
+        goalManager.addGoal(new PickItem(this));
 		goalManager.addGoal(new BringEnemyFlag(this));
         goalManager.addGoal(defendOurFlagGoal = new DefendOurFlag(this));
         goalManager.addGoal(new Support(this));
-		List<Item> pickWeaponOrAmmo = new ArrayList<Item>();
-		List<Item> pickShield = new ArrayList<Item>();
-		List<Item> pickHealth = new ArrayList<Item>();
-		List<Item> pickAdrenaline = new ArrayList<Item>();
-
-		pickHealth.addAll(items.getAllItems(UT2004ItemType.UT2004Group.HEALTH).values());
-		pickHealth.addAll(items.getAllItems(UT2004ItemType.UT2004Group.MINI_HEALTH).values());
-		pickHealth.addAll(items.getAllItems(UT2004ItemType.UT2004Group.SUPER_HEALTH).values());
-		pickAdrenaline.addAll(items.getAllItems(UT2004ItemType.UT2004Group.ADRENALINE).values());
+        goalManager.addGoal(new HuntDown(this));
         List<Location> defendSpots = new ArrayList<Location>();
         List<Location> defendFocusSpots = new ArrayList<Location>();
 		if(navBuilder.isMapName("CTF-Citadel")){
             //navBuilder.removeEdgesBetween("CTF-Citadel.PathNode75", "CTF-Citadel.JumpSpot26");
             //draw.drawLine(Color.cyan, navPoints.getNavPoint("CTF-Citadel.PathNode75").getLocation(), navPoints.getNavPoint("CTF-Citadel.JumpSpot26").getLocation());
             //draw.drawLine(Color.cyan, navPoints.getNavPoint("CTF-Citadel.PathNode64").getLocation(), navPoints.getNavPoint("CTF-Citadel.jumpspot9").getLocation());
-			log.info("LOADING CUSTOM SETUP FOR CTF-Citadel");
-			/*tabooItems.add(items.getItem("CTF-Citadel.InventorySpot232"));
-			tabooItems.add(items.getItem("CTF-Citadel.InventorySpot233"));*/
-            pickHealth.removeAll(items.getAllItems(UT2004ItemType.UT2004Group.SUPER_HEALTH).values());
-			pickWeaponOrAmmo.addAll(items.getAllItems(UT2004ItemType.UT2004Group.MINIGUN).values());
-			pickWeaponOrAmmo.addAll(items.getAllItems(UT2004ItemType.UT2004Group.LIGHTNING_GUN).values());
-			pickWeaponOrAmmo.addAll(items.getAllItems(UT2004ItemType.UT2004Group.ROCKET_LAUNCHER).values());
-			pickWeaponOrAmmo.addAll(items.getAllItems(UT2004ItemType.UT2004Group.SHOCK_RIFLE).values());
-			pickWeaponOrAmmo.addAll(items.getAllItems(UT2004ItemType.UT2004Group.BIO_RIFLE).values());
+			tabooItems.add(items.getItem("CTF-Citadel.SuperHealthCharger0"));
+            tabooItems.add(items.getItem("CTF-Citadel.SuperHealthCharger1"));
+            tabooItems.addAll(items.getAllItems(UT2004ItemType.BIO_RIFLE_AMMO).values());
             List<Location> snipingSpots = new ArrayList<Location>();
             List<Location> snipingFocusSpots = new ArrayList<Location>();
 			if(team == 0){
+                rendezvousLocation = navPoints.getNavPoint("CTF-Citadel.InventorySpot175").getLocation();
+                hideCarryLocation = navPoints.getNavPoint("CTF-Citadel.AssaultPath1").getLocation();
                 snipingSpots.add(new Location(-127.03, 2455.29, 457.90) );
                 snipingSpots.add(new Location(-285.89, 2433.07, 443.90) );
                 snipingFocusSpots.add(navPoints.getNavPoint("CTF-Citadel.InventorySpot175").getLocation());
@@ -328,6 +330,8 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
                 defendFocusSpots.add(navPoints.getNavPoint("CTF-Citadel.PathNode104").getLocation());
 
             }else{
+                rendezvousLocation = navPoints.getNavPoint("CTF-Citadel.InventorySpot172").getLocation();
+                hideCarryLocation = navPoints.getNavPoint("CTF-Citadel.AssaultPath0").getLocation();
                 snipingSpots.add(navPoints.getNavPoint("CTF-Citadel.AIMarker25").getLocation());
                 snipingSpots.add(navPoints.getNavPoint("CTF-Citadel.AIMarker35").getLocation());
                 snipingFocusSpots.add(navPoints.getNavPoint("CTF-Citadel.InventorySpot172").getLocation());
@@ -344,13 +348,18 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
 			defendOurFlagGoal.setDefendSpots(defendSpots);
 			defendOurFlagGoal.setDefendFocusSpots(defendFocusSpots);
 
-		}else if(navBuilder.isMapName("CTF-BP2-Concentrate")) {
+		}
+		if(navBuilder.isMapName("CTF-BP2-Concentrate")) {
             if(team == 0) {
+                rendezvousLocation = navPoints.getNavPoint("CTF-BP2-Concentrate.InventorySpot6").getLocation();
+                hideCarryLocation = navPoints.getNavPoint("CTF-BP2-Concentrate.InventorySpot29").getLocation();
                 defendSpots.add(navPoints.getNavPoint("CTF-BP2-Concentrate.JumpSpot11").getLocation());
                 defendSpots.add(navPoints.getNavPoint("CTF-BP2-Concentrate.InventorySpot50").getLocation());
                 defendFocusSpots.add(navPoints.getNavPoint("CTF-BP2-Concentrate.JumpSpot11").getLocation());
                 defendFocusSpots.add(navPoints.getNavPoint("CTF-BP2-Concentrate.AssaultPath12").getLocation());
             }else{
+                rendezvousLocation = navPoints.getNavPoint("CTF-BP2-Concentrate.InventorySpot10").getLocation();
+                hideCarryLocation = navPoints.getNavPoint("CTF-BP2-Concentrate.InventorySpot36").getLocation();
                 defendSpots.add(navPoints.getNavPoint("CTF-BP2-Concentrate.JumpSpot4").getLocation());
                 defendSpots.add(navPoints.getNavPoint("CTF-BP2-Concentrate.InventorySpot41").getLocation());
                 defendFocusSpots.add(navPoints.getNavPoint("CTF-BP2-Concentrate.AssaultPath5").getLocation());
@@ -358,13 +367,18 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
             }
             defendOurFlagGoal.setDefendSpots(defendSpots);
             defendOurFlagGoal.setDefendFocusSpots(defendFocusSpots);
-        }else if(navBuilder.isMapName("CTF-Maul")) {
+        }
+        if(navBuilder.isMapName("CTF-Maul")) {
             if(team == 0) {
+                rendezvousLocation = navPoints.getNavPoint("CTF-Maul.InventorySpot809").getLocation();
+                hideCarryLocation = navPoints.getNavPoint("CTF-Maul.InventorySpot829").getLocation();
                 defendSpots.add(navPoints.getNavPoint("CTF-Maul.InventorySpot814").getLocation());
                 defendSpots.add(navPoints.getNavPoint("CTF-Maul.InventorySpot810").getLocation());
                 defendFocusSpots.add(navPoints.getNavPoint("CTF-Maul.PathNode46").getLocation());
                 defendFocusSpots.add(navPoints.getNavPoint("CTF-Maul.JumpSpot18").getLocation());
             }else{
+                rendezvousLocation = navPoints.getNavPoint("CTF-Maul.InventorySpot804").getLocation();
+                hideCarryLocation = navPoints.getNavPoint("CTF-Maul.InventorySpot827").getLocation();
                 defendSpots.add(navPoints.getNavPoint("CTF-Maul.InventorySpot819").getLocation());
                 defendSpots.add(navPoints.getNavPoint("CTF-Maul.InventorySpot805").getLocation());
                 defendFocusSpots.add(navPoints.getNavPoint("CTF-Maul.PathNode54").getLocation());
@@ -372,17 +386,7 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
             }
             defendOurFlagGoal.setDefendSpots(defendSpots);
             defendOurFlagGoal.setDefendFocusSpots(defendFocusSpots);
-        } else {
-			//pick all weapons and ammo
-			pickWeaponOrAmmo.addAll(items.getAllItems(ItemType.Category.WEAPON).values());
-			pickWeaponOrAmmo.addAll(items.getAllItems(ItemType.Category.AMMO).values());
-		}
-		pickShield.addAll(items.getAllItems(UT2004ItemType.UT2004Group.SMALL_ARMOR).values());
-		pickShield.addAll(items.getAllItems(UT2004ItemType.UT2004Group.SUPER_ARMOR).values());
-		pickWeaponOrAmmoGoal.setItemsToPickUp(pickWeaponOrAmmo);
-		pickShieldGoal.setItemsToPickUp(pickShield);
-		pickHealthGoal.setItemsToPickUp(pickHealth);
-		pickAdrenalineGoal.setItemsToPickUp(pickAdrenaline);
+        }
 	}
     /**
      * Returns parameters of the bot.
@@ -409,7 +413,7 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
     public void botFirstSpawn(GameInfo gameInfo, ConfigChange currentConfig, InitedMessage init, Self self) {
         //join to right channel
         PogamutJVMComm.getInstance().registerAgent(bot, self.getTeam());
-        navigation.setLogLevel(Level.FINEST);
+        //navigation.setLogLevel(Level.FINEST);
     }
 
     @Override
@@ -421,6 +425,9 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
 
     //<editor-fold desc="FIGHT">
 
+    /**
+     * Updates fight and shooting
+     */
 	private void updateFight() {
         //no visibe enemies
         if(!players.canSeeEnemies()){
@@ -434,7 +441,6 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
             enemy = players.getNearestVisibleEnemy();
         }
         shoot(enemy);
-        targetHU.heat();
 	}
 
 	private void shoot(Player target){
@@ -466,7 +472,7 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
 
     //</editor-fold>
 
-    //<editor-fold desc="COMUNCATION">
+    //<editor-fold desc="COMMUNCATION">
 
     /**
      * Process picked up items from teammate
@@ -476,7 +482,7 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
     private void processTCItemPickedUp(TCItemPickedUp msg) {
         Item item = items.getItem(msg.getId());
         if(item == null){
-            log.severe( "TEAMMATE PICKED UP NULL");
+            log.warning( "TEAMMATE PICKED UP NULL");
             return;
         }
         log.info( "TEAMMATE PICKED UP " +item);
@@ -490,7 +496,9 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
     @EventListener(eventClass = TCTeammateInfo.class)
     public void processTCTeammateInfo(TCTeammateInfo msg) {
         //update teammate info
-        teammates.put(msg.getBotID(),msg);
+        if(teammates.get(msg.getBotID()) == null || teammates.get(msg.getBotID()).getUpdatedTime() < msg.getUpdatedTime()){
+            teammates.put(msg.getBotID(),msg);
+        }
         //not pickup same item as other bot
         if(msg.getTargetItemId() != null){
             Item i = items.getItem(msg.getTargetItemId());
@@ -498,7 +506,7 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
                 tabooItems.add(i,1.5);
             }
         }
-        log.severe( "TEAMMATE INFO UPDATE: " + msg);
+        log.info( "TEAMMATE INFO UPDATE: " + msg.getName()+ " "+ msg.getLocation() +" " + msg.getUpdatedTime());
     }
 
     /**
@@ -508,12 +516,14 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
     @EventListener(eventClass = TCEnemyInfo.class)
     public void processTCEnemyInfo(TCEnemyInfo msg) {
         //update enemy info
-        enemies.put(msg.getBotID(), msg);
+        if(enemies.get(msg.getBotID()) == null || enemies.get(msg.getBotID()).getFirst().getUpdatedTime() < msg.getUpdatedTime()){
+            enemies.put(msg.getBotID(), new Tuple2<TCEnemyInfo, Cooldown>(msg, new Cooldown(400)));
+        }
         //update carry
         if(msg.isCarry()){
             enemyCarry = players.getPlayer(msg.getBotID());
         }
-        log.severe( "ENEMY INFO UPDATE: " + msg);
+        log.info( "ENEMY INFO UPDATE: " + msg);
     }
 
 
@@ -530,7 +540,7 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
 			ourFlagLocation = msg.getOurFlagLocation();
 			flagUnknown = false;
 		}
-		log.fine("FLAG LOCATION UPDATED " + enemyFlagLocation + " " + ourFlagLocation);
+		log.info("FLAG LOCATION UPDATED " + enemyFlagLocation + " " + ourFlagLocation);
 	}
 
     /**
@@ -547,7 +557,7 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
 		}else {
             supportRequests.put(msg.getBotId(), msg.getSupportType());
         }
-        log.fine("SUPPORT UPDATED " + msg.getBotId() + " " + msg.getSupportType() + " " + msg.isRevoking() );
+        log.info("SUPPORT UPDATED " + msg.getBotId() + " " + msg.getSupportType() + " " + msg.isRevoking() );
 	}
 
 
@@ -581,22 +591,24 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
         //will be chosen after goal;
         targetItem = null;
         //flags processing
-        //updateFlagsLocation();
         log.info("CARRY " +isCarry + " " +ctf.isBotCarryingEnemyFlag());
         if(!ctf.isBotCarryingEnemyFlag() && isCarry){
             //cancel support request, not carry flag anymore
             tcClient.sendToTeamOthers(new TCSupportUpdate(info.getId(), null, true));
             bot.getLog().fine("SENDING SUPPORT UPDATE OFF");
         }
+
         isCarry = ctf.isBotCarryingEnemyFlag();
         sniper = false;
         // update location of visible friends
-        for(Player player : players.getVisibleFriends().values()){
+        /*for(Player player : players.getVisibleFriends().values()){
             if(teammates.get(player.getId()) == null){
-                teammates.put(player.getId(), new TCTeammateInfo(player.getId(),null,player.getLocation(), null, null, false, false));
+                teammates.put(player.getId(), new TCTeammateInfo(player.getId(),null,player.getLocation(), null, null, false, false, info.getTime()));
+                }else {
+                teammates.get(player.getId()).setLocation(player.getLocation());
+                teammates.get(player.getId()).setUpdatedTime(info.getTime());
             }
-            teammates.get(player.getId()).setLocation(player.getLocation());
-        }
+        }*/
         goalManager.executeBestGoal();
 
         //update fight
@@ -608,21 +620,21 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
             if (targetItem != null) {
                 targetItemId = targetItem.getId();
             }
-            tcClient.sendToTeamOthers(new TCTeammateInfo(info.getId(), role, info.getLocation(), targetItemId, botName, sniper, camper));
+            tcClient.sendToTeamOthers(new TCTeammateInfo(info.getId(), role, info.getLocation(), targetItemId, botName, sniper, camper, info.getTime()));
             statusCD.use();
         }
-/*
-        log.info("OUR FLAG:                      " + ctf.getOurFlag());
-        log.info("OUR BASE:                      " + ctf.getOurBase());
-        log.info("ENEMY FLAG LOCATION:           " + enemyFlagLocation);
-        log.info("OUR FLAG LOCATION:             " + ourFlagLocation);
-        log.info("CAN OUR TEAM POSSIBLY SCORE:   " + ctf.canOurTeamPossiblyScore());
-        log.info("CAN OUR TEAM SCORE:            " + ctf.canOurTeamScore());
-        log.info("CAN BOT SCORE:                 " + ctf.canBotScore());
-        log.info("ENEMY FLAG:                    " + ctf.getEnemyFlag());
-        log.info("ENEMY BASE:                    " + ctf.getEnemyBase());
-        log.info("CAN ENEMY TEAM POSSIBLY SCORE: " + ctf.canEnemyTeamPossiblyScore());
-        log.info("CAN ENEMY TEAM SCORE:          " + ctf.canEnemyTeamScore());*/
+
+
+        // camping, turn around
+        if(!navigation.isNavigating() && !info.isShooting() && !players.canSeeEnemies())
+        {
+            move.turnHorizontal(120);
+        }
+
+        /*log.finest("TEAMMATES LOCATIONS: ");
+        for( TCTeammateInfo teammateInfo : teammates.values()){
+            log.finest(teammateInfo.getName() + " " + teammateInfo.getLocation() + " " + teammateInfo.getUpdatedTime());
+        }*/
     }
     //</editor-fold>
 
@@ -639,7 +651,8 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
         @Override
         public int getNodeExtraCost(NavPoint node, int mapCost) {
             int penalty = 0;
-            for (TCEnemyInfo player : enemies.values()) {
+            for (Tuple2<TCEnemyInfo, Cooldown> tuple : enemies.values()) {
+                TCEnemyInfo player = tuple.getFirst();
                 if (player.getLocation() != null) {
                     if (node.getLocation().getDistance(player.getLocation()) <= 500.0D) {
                         penalty += 1000;
@@ -668,10 +681,10 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
         public boolean isArcOpened(NavPoint nodeFrom, NavPoint nodeTo) {
             // ALL ARCS ARE OPENED
             NavPointNeighbourLink link = nodeFrom.getOutgoingEdges().get(nodeTo.getId());
-            if ((link.getFlags() & fwMap.BAD_EDGE_FLAG) > 0) {
+            if(!fwMap.checkLink(link)) {
                 return false;
             }
-            return true;
+                return true;
         }
     }
 
@@ -688,55 +701,76 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
         return pathFuture;
     }
 
+    /**
+     * Basic navigation
+     * @param target where to navigate
+     */
     public void goTo(ILocated target) {
+        //draw.clearAll();
 		if (target == null) {
-			log.severe("GOTO TARGET NULL");
+			log.warning("GOTO TARGET NULL");
 			navigation.stopNavigation();
 			return;
 		}
 		pathTarget = target.getLocation();
         if(pathTarget == null){
-            log.severe("GOTO TARGET LOCATION NULL");
+            log.warning("GOTO TARGET LOCATION NULL");
             navigation.stopNavigation();
         }
+        ///NavPoint nearestTarget = navPoints.getNearestNavPoint(target);
         if(navigation.isNavigating() && target == navigationTarget){
             log.fine("GOTO CONTINUE" +target.getLocation() + " " +target);
+            //drawPath(navigation.getCurrentPathCopy());
             return;
         }
-		navigation.navigate(target);
+
+        navigation.navigate(target);
         navigationTarget = target.getLocation();
+        //drawPath(navigation.getCurrentPathCopy());
         log.info("GOTO " +target.getLocation() + " " +target);
 	}
+
+    /**
+     * Cover navigation, try to stay away from enemies
+     * @param target where to navigate
+     */
     public void goToCover(ILocated target) {
+        //draw.clearAll();
 	    if (target == null) {
-            log.severe("GOTO COVER TARGET NULL");
+            log.warning("GOTO COVER TARGET NULL");
             navigation.stopNavigation();
             return;
         }
         pathTarget = target.getLocation();
         if(pathTarget == null){
-            log.severe("GOTO COVER TARGET LOCATION NULL");
+            log.warning("GOTO COVER TARGET LOCATION NULL");
             navigation.stopNavigation();
             return;
         }
         if((navigation.isNavigating() || pathExecutor.isExecuting()) && target == navigationTarget){
             log.fine("GOTO COVER CONTINUE");
+            //drawPath(navigation.getCurrentPathCopy());
             return;
         }
         PrecomputedPathFuture<NavPoint> path = generateCoverPath(target);
         if (path == null) {
-            log.severe("GOTO COVER PATH NULL");
+            log.warning("GOTO COVER PATH NULL");
             goTo(target);
             return;
         }
         navigation.navigate((IPathFuture)path);
         navigationTarget = target.getLocation();
+        //drawPath(navigation.getCurrentPathCopy());
         log.info("GOTO COVER " +target.getLocation() + " " +target);
     }
 
+    /**
+     * Navigation to moving target
+     * @param player to navigate
+     */
 	public void followPlayer(Player player){
 	    if(player == null || player.getLocation() == null){
-	        log.severe("FOLLOW PLAYER NULL");
+	        log.warning("FOLLOW PLAYER NULL");
 	        return;
         }
 	    navigation.navigate(player);
@@ -748,7 +782,14 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
     //</editor-fold>
 
     //<editor-fold desc="HELPER METHODS">
-
+/*
+    private void drawPath(List<? extends ILocated> path) {
+        log.info("DRAWING PATH, size = " + path.size());
+        draw.setColor(Color.WHITE);
+        for (int i = 1; i < path.size(); ++i) {
+            draw.drawLine(path.get(i-1),  path.get(i));
+        }
+    }*/
     /**
      * Perform item pick
      * @param item
@@ -756,7 +797,7 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
     public void pickItem(Item item){
         targetItem = item;
         if (targetItem == null) {
-            bot.getLog().severe("PICKITEM IS NULL");
+            bot.getLog().warning("PICKITEM IS NULL");
             navigation.stopNavigation();
             return;
         }
@@ -772,7 +813,7 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
     }
 
     /**
-     * Resets the state of the Hunter.
+     * Resets the state of the bot.
      */
     protected void reset() {
         notMoving = 0;
@@ -826,7 +867,7 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
             case PATH_COMPUTATION_FAILED:
                 // if navigating to item taboo it
                 if (targetItem != null) {
-                    log.severe("PATH FAILED WITH" + targetItem);
+                    log.warning("PATH FAILED WITH" + targetItem);
                     tabooItems.add(targetItem, 60);
                 }
                 break;
@@ -834,7 +875,7 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
             case STUCK:
                 // if navigating to item taboo it
                 if (targetItem != null) {
-                    log.severe("STUCK WTIH " + targetItem);
+                    log.warning("STUCK WTIH " + targetItem);
                     tabooItems.add(targetItem, 20);
                 }
                 break;
@@ -845,7 +886,7 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
                     tabooItems.add(targetItem, items.getItemRespawnTime(targetItem));
                     log.info("NOT SPAWNED " + targetItem);
                     if(targetItem.getId() == null){
-                        log.severe("ID NULL TARGETREACHED");
+                        log.warning("ID NULL TARGETREACHED");
                     }
                     tcClient.sendToTeamOthers(new TCItemPickedUp(targetItem.getId()));
                 }
@@ -873,10 +914,14 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
         Player player = (Player)event.getObject();
         //teammate
         if(player.getTeam() == team){
+            //see player before first message, ignore and wait for first message
             if(teammates.get(player.getId()) == null){
-                teammates.put(player.getId(), new TCTeammateInfo(player.getId(),null,player.getLocation(), null, null, false, false));
+                return;
             }
-            teammates.get(player.getId()).setLocation(player.getLocation());
+            if(player.getLocation() != null) {
+                teammates.get(player.getId()).setLocation(player.getLocation());
+                teammates.get(player.getId()).setUpdatedTime(info.getTime());
+            }
         }else{
             //enemy player
             boolean carry = false;
@@ -884,7 +929,19 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
                 carry = true;
                 enemyCarry = player;
             }
-            enemies.put(player.getId(),new TCEnemyInfo(player.getId(), player.getLocation(), carry));
+            if(enemies.get(player.getId()) == null){
+                enemies.put(player.getId(), new Tuple2<TCEnemyInfo, Cooldown>(new TCEnemyInfo(player.getId(), player.getLocation(), carry, info.getTime()), new Cooldown(400)));
+            }
+            if(player.getLocation() != null) {
+                enemies.get(player.getId()).getFirst().setLocation(player.getLocation());
+                enemies.get(player.getId()).getFirst().setUpdatedTime(info.getTime());
+                //notify rest of the team
+                if(enemies.get(player.getId()).getSecond().isCool()) {
+                    tcClient.sendToTeamOthers(enemies.get(player.getId()).getFirst());
+                    enemies.get(player.getId()).getSecond().use();
+                    log.info( "SEND ENEMY INFO UPDATE");
+                }
+            }
         }
     }
 
@@ -956,22 +1013,23 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
         if(item != null ){
 
             if(item.getId() == null){
-                log.severe("ID NULL ITEMPICKUP");
+                log.warning("ID NULL ITEMPICKUP");
                 System.exit(0);
             }
             tabooItems.add(item, items.getItemRespawnTime(item));
             tcClient.sendToTeamOthers(new TCItemPickedUp(item.getId()));
         }else {
-            log.severe("PICKUP EVENT ITEM NULL");
+            log.warning("PICKUP EVENT ITEM NULL");
         }
     }
 
-
+    /**
+     * Killed enemy, clearing target
+     */
     @EventListener(eventClass = PlayerKilled.class)
     private void playerKilled(PlayerKilled event) {
         //if player got killed clear heat
         if(enemy != null && event.getId() == enemy.getId()) {
-            targetHU.clear();
             enemy = null;
         }
         if(enemyCarry != null && event.getId() == enemyCarry.getId()){
@@ -985,8 +1043,7 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
      */
     @EventListener(eventClass = Bumped.class)
     private void bumped(Bumped event) {
-
-        log.severe("BUMP");
+        log.info("BUMP");
         move.strafeLeft(100, event.getLocation());
     }
 
@@ -1002,6 +1059,7 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
         if(combatHU.isCool() && players.getVisibleEnemies().size() == 0){
             //check your back some one shoots on bot but can't see enemy
             move.turnHorizontal(180);
+            log.fine("GOT SHOT TURNING AROUND");
         }
         combatHU.heat();
     }
@@ -1009,9 +1067,17 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
     /**
 	 * Rocket dodging
 	 * @param event
-	 */
+    */
 	@ObjectClassEventListener(objectClass = IncomingProjectile.class, eventClass = WorldObjectUpdatedEvent.class)
 	private void incomingProjectile(WorldObjectUpdatedEvent<IncomingProjectile> event) {
+        //dodge only rockets
+	    if(!event.getObject().getType().equals(UT2004ItemType.ROCKET_LAUNCHER_PROJECTILE.getName())){
+            return;
+        }
+	    //don't dodge my projectiles  or too close ones
+	    if (event.getObject().getOrigin().getDistance(info.getLocation()) < 300){
+	        return;
+        }
 		if(event.getObject().getLocation().getDistance(info.getLocation()) < 750){
 			if(random.nextDouble() < 0.5) {
 				move.dodgeLeft(info.getLocation().add(info.getRotation().toLocation()), false);
@@ -1125,10 +1191,6 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
         this.lastGoal = lastGoal;
     }
 
-    public Heatup getTargetHU() {
-        return targetHU;
-    }
-
     public Player getEnemyCarry() {
         return enemyCarry;
     }
@@ -1137,16 +1199,31 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
         this.enemyCarry = enemyCarry;
     }
 
-    public Map<UnrealId, TCEnemyInfo> getEnemies() {
+    public Map<UnrealId, Tuple2<TCEnemyInfo, Cooldown>> getEnemies() {
         return enemies;
     }
 
-    public void setEnemies(Map<UnrealId, TCEnemyInfo> enemies) {
+    public void setEnemies(Map<UnrealId, Tuple2<TCEnemyInfo, Cooldown>> enemies) {
         this.enemies = enemies;
     }
+
+    public Location getHideCarryLocation() {
+        return hideCarryLocation;
+    }
+
+    public void setHideCarryLocation(Location hideCarryLocation) {
+        this.hideCarryLocation = hideCarryLocation;
+    }
+
+    public Location getRendezvousLocation() {
+        return rendezvousLocation;
+    }
+
+    public void setRendezvousLocation(Location rendezvousLocation) {
+        this.rendezvousLocation = rendezvousLocation;
+    }
+
     //</editor-fold>
-
-
 
 	// //////////////////////////////////////////
 	/*
@@ -1174,8 +1251,9 @@ public class CTFBot extends UT2004BotTCController<UT2004Bot> {
 					new CTFBotParams().setSkill(skill).setTeam(team).setAgentId(new AgentId("dobripet - 7"))
 			};
 			// get required number of bots
-			//UT2004BotParameters botsParams[] = Arrays.copyOf(botsParamSetup, TEAM_SIZE);
-			UT2004BotParameters botsParams[] = Arrays.copyOf(botsParamSetup, 1);
+			UT2004BotParameters botsParams[] = Arrays.copyOf(botsParamSetup, TEAM_SIZE);
+			// Start TC Server first...
+            UT2004TCServer tcServer = UT2004TCServer.startTCServer();
 			// run bots
 			new UT2004BotRunner<UT2004Bot, UT2004BotParameters>(CTFBot.class, "dobripet").setMain(true).setHost(host).setLogLevel(Level.WARNING).startAgents(botsParams);
 		}catch (Exception e ){

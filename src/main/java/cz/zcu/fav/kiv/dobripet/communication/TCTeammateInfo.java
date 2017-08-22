@@ -8,6 +8,7 @@ import cz.zcu.fav.kiv.dobripet.Role;
 
 /**
  * Created by Petr on 5/10/2017.
+ * Represents teammate bot state.
  */
 public class TCTeammateInfo extends TCMessageData {
 
@@ -25,7 +26,9 @@ public class TCTeammateInfo extends TCMessageData {
 
     private boolean isCamper;
 
-    public TCTeammateInfo(UnrealId botID, Role role, Location location, UnrealId targetItemId, String name, boolean isSniper, boolean isCamper) {
+    private double updatedTime;
+
+    public TCTeammateInfo(UnrealId botID, Role role, Location location, UnrealId targetItemId, String name, boolean isSniper, boolean isCamper, double updatedTime) {
         super(Tokens.get("TCTeammateInfo"));
         this.botID = botID;
         this.role = role;
@@ -34,6 +37,7 @@ public class TCTeammateInfo extends TCMessageData {
         this.name = name;
         this.isSniper = isSniper;
         this.isCamper = isCamper;
+        this.updatedTime = updatedTime;
     }
 
     public UnrealId getBotID() {
@@ -90,5 +94,13 @@ public class TCTeammateInfo extends TCMessageData {
 
     public void setCamper(boolean camper) {
         isCamper = camper;
+    }
+
+    public double getUpdatedTime() {
+        return updatedTime;
+    }
+
+    public void setUpdatedTime(double updatedTime) {
+        this.updatedTime = updatedTime;
     }
 }

@@ -1,9 +1,7 @@
 package cz.zcu.fav.kiv.dobripet.goals;
 
-import java.util.Collections;
 import java.util.LinkedList;
 
-import cz.cuni.amis.pogamut.ut2004.bot.impl.UT2004Bot;
 import cz.zcu.fav.kiv.dobripet.CTFBot;
 
 public class GoalManager {
@@ -27,7 +25,7 @@ public class GoalManager {
 
 	public IGoal executeBestGoal() {
 
-		double maxPriority = Double.MIN_VALUE;
+		double maxPriority = -1d;
 		IGoal next_goal = null;
 		for (IGoal goal : goals){
 			double priority = goal.getPriority();

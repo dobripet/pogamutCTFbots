@@ -7,6 +7,7 @@ import cz.zcu.fav.kiv.dobripet.SupportType;
 
 /**
  * Created by Petr on 5/10/2017.
+ * Represents support state
  */
 public class TCSupportUpdate extends TCMessageData {
     private UnrealId botId;

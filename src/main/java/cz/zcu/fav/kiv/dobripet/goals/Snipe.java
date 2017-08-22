@@ -10,6 +10,7 @@ import java.util.Random;
 
 /**
  * Created by Petr on 5/11/2017.
+ * Goal to go to snipe spots and snipe.
  */
 public class Snipe extends Goal {
     //sniping spots
@@ -51,18 +52,22 @@ public class Snipe extends Goal {
 
     @Override
     public double getPriority() {
-        /*if(bot.getCTF().isOurFlagHome()){
-            if(!bot.isAnybodySniper() && bot.hasSniperGun()){
-                //rnd sniping spot
-                snipingSpot = snipingSpots.get(roundIndex % snipingSpots.size());
-                if(bot.getRole() == Role.ATTACKER){
-                    return Priority.SNIPE_ATTACKER_PRIORITY;
-                }
-                return Priority.SNIPE_DEFENDER_PRIORITY;
-            }
-        }*/
+        //rnd sniping spot
         snipingSpot = snipingSpots.get(roundIndex % snipingSpots.size());
-        return 1000d;
+        if(!bot.isAnybodySniper() && bot.hasSniperGun()){
+                double priority;
+                if(bot.getRole() == Role.ATTACKER){
+                    priority = Priority.SNIPE_ATTACKER_PRIORITY;
+                }else {
+                    priority = Priority.SNIPE_DEFENDER_PRIORITY;
+                }
+                if(bot.getCTF().isOurFlagHome()){
+                    return priority;
+                } else{
+                    return priority-20d;
+                }
+        }
+        return 0d;
     }
 
     @Override

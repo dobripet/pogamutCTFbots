@@ -6,6 +6,7 @@ import cz.cuni.amis.utils.token.Tokens;
 
 /**
  * Created by Petr on 5/7/2017.
+ * Represents itemPickedUp, used to update taboo
  */
 public class TCItemPickedUp extends TCMessageData{
 

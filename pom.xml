@@ -5,22 +5,19 @@
 	<parent>
 		<groupId>cz.cuni.amis.pogamut.ut2004</groupId>
 		<artifactId>pogamut-ut2004-bot-pom</artifactId>
-		<version>3.7.0</version>
+		<version>3.7.1-SNAPSHOT</version>
 	</parent>
 	<dependencies>
 		<dependency>
 			<groupId>cz.cuni.amis.pogamut.ut2004</groupId>
 			<artifactId>ut2004-team-comm</artifactId>
-			<version>3.7.0</version>
+			<version>3.7.1-SNAPSHOT</version>
 		</dependency>
 	</dependencies>
 	<groupId>cz.zcu.fav.kiv.dobripet</groupId>
 	<artifactId>pogamut-ctf-bots</artifactId>
 	<version>1.0-SNAPSHOT</version>
 	<packaging>jar</packaging>
-
-	<name>09-ctf-bot</name>
-	<url>http://pogamut.cuni.cz</url>
 
 	<properties>
 		<bot.main.class>cz.zcu.fav.kiv.dobripet.CTFBot</bot.main.class>

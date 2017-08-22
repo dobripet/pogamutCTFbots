@@ -8,11 +8,9 @@ import java.awt.*;
 
 /**
  * Created by Petr on 5/8/2017.
+ * Goal to support our carry.
  */
 public class Support extends Goal{
-
-
-    private final double DISTANCE = 2000d;
 
     private UnrealId supportingBotId;
     private SupportType type;
@@ -23,29 +21,32 @@ public class Support extends Goal{
 
     @Override
     public void perform() {
-        bot.setSupporting(true);
+        //should not happened
+        if(supportingBotId == null || bot.getPlayers().getPlayer(supportingBotId)==null){
+            bot.getLog().severe("SUPPORT NULL");
+            return;
+        }
         //defending carry
         TCTeammateInfo supportingBot = bot.getTeammates().get(supportingBotId);
         // stay close to support target
-        if(supportingBotId == null){
-            bot.getLog().severe("TOTAL ERROR SUPPORT 0");
-        }
-        if (bot.getPlayers().getPlayer(supportingBotId)==null){
-            bot.getLog().severe("TOTAL ERROR SUPPORT " + supportingBotId);
-        }
         if (bot.getPlayers().getPlayer(supportingBotId).isVisible()) {
             bot.followPlayer(bot.getPlayers().getPlayer(supportingBotId));
         } else {
+            if(bot.getTeammates().get(supportingBotId) == null){
+                bot.getLog().severe("SUPPORT TEAMMATE NULL");
+                return;
+            }
             bot.goTo(bot.getTeammates().get(supportingBotId).getLocation());
         }
+        bot.setSupporting(true);
+        bot.getLog().fine("SUPPORTING " + supportingBot.getName() + " D " + bot.getInfo().getLocation().getDistance(supportingBot.getLocation()) + " L" + supportingBot.getLocation());
         //bot.draw(Color.cyan, supportingBot.getLocation());
         bot.getBot().getBotName().setInfo("SUPPORTING " + supportingBot.getName() + " D " + bot.getInfo().getLocation().getDistance(supportingBot.getLocation()) + " L" + supportingBot.getLocation());
     }
 
     @Override
     public double getPriority() {
-        UnrealId chosenSupportId = null;
-        double maxPriority = Double.MIN_VALUE;
+        double maxPriority = -1d;
         for (UnrealId botId : bot.getSupportRequests().keySet()) {
             //cannot support myself
             if (botId == bot.getInfo().getId()) {
@@ -53,22 +54,16 @@ public class Support extends Goal{
             }
             SupportType requestType = bot.getSupportRequests().get(botId);
             double distance = bot.getPathDistance(bot.getTeammates().get(botId).getLocation());
-            if (requestType == SupportType.DEFEND_FLAG_CARRY) {
-                double priority;
+            if (requestType == SupportType.DEFEND_FLAG_CARRY && distance < 3500) {
+                supportingBotId = botId;
+                type = requestType;
                 if (bot.getRole() == Role.ATTACKER) {
-                    priority = (DISTANCE / Utils.nonZeroDistance(distance)) * Priority.SUPPORT_MATCHING_PRIORITY;
+                    return Priority.SUPPORT_ATTACKER_PRIORITY;
                 } else {
-                    priority = (DISTANCE / Utils.nonZeroDistance(distance)) * Priority.SUPPORT_UNMATCHING_PRIORITY;
-                }
-                if (priority > maxPriority) {
-                    maxPriority = priority;
-                    chosenSupportId = botId;
-                    type = requestType;
+                    return Priority.SUPPORT_DEFENDER_PRIORITY;
                 }
             }
         }
-        bot.getLog().fine("SUPPORT SCORE " + maxPriority);
-        supportingBotId = chosenSupportId;
         return maxPriority;
     }
 

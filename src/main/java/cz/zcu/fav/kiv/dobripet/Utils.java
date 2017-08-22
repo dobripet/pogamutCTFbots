@@ -1,8 +1,12 @@
 package cz.zcu.fav.kiv.dobripet;
 
+import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
+import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
+import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemTypeTranslator;
+import cz.zcu.fav.kiv.dobripet.communication.TCTeammateInfo;
 import net.sf.saxon.type.ListType;
 
 import java.util.*;
@@ -61,5 +65,24 @@ public class Utils {
             return distance;
         }
         return 1d;
+    }
+
+    public static boolean isNearest(CTFBot bot, ILocated target){
+        double distance = Double.MAX_VALUE;
+        for(TCTeammateInfo teammateInfo : bot.getTeammates().values()){
+            Location location = teammateInfo.getLocation();
+            if(location == null){
+                continue;
+            }
+            double tmpDistance = bot.getFwMap().getDistance(bot.getNavigation().getNearestNavPoint(location), bot.getNavigation().getNearestNavPoint(target));
+            if( tmpDistance > distance){
+                continue;
+            }
+            distance = tmpDistance;
+        }
+        if(bot.getFwMap().getDistance(bot.getNavigation().getNearestNavPoint(bot.getInfo().getLocation()), bot.getNavigation().getNearestNavPoint(target)) > distance){
+            return false;
+        }
+        return true;
     }
 }

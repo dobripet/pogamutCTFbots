@@ -6,6 +6,7 @@ import cz.cuni.amis.utils.token.Tokens;
 
 /**
  * Created by Petr on 5/10/2017.
+ * Represents flag locations for both teams.
  */
 public class TCUpdateFlagLocation extends TCMessageData {
     private Location enemyFlagLocation;

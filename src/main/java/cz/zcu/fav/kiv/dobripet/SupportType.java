@@ -6,4 +6,5 @@ package cz.zcu.fav.kiv.dobripet;
 public enum SupportType {
     DEFEND_FLAG_CARRY,
     GET_OUR_FLAG,
+    GET_OUR_FLAG_RENDEZVOUS
 }
